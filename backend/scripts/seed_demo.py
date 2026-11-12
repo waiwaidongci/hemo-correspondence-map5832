@@ -6,6 +6,8 @@ from src.utils.security import hash_password
 from src.services.catalog import table_data
 from src.services.ca import correspondence
 from src.services.fingerprint import fingerprint
+from src.services.randomization import fixed_margin_test
+from src.services.randomization_runs import attach_run_context
 
 def seed():
  Base.metadata.create_all(engine)
@@ -28,5 +30,12 @@ def seed():
    db.commit()
   if not db.scalar(select(CorrespondenceRun).where(CorrespondenceRun.name=='秋季导览结构初稿')):
    study=db.scalar(select(ContingencyStudy).where(ContingencyStudy.name==scenarios[0][0]));meta,rows,cols,cells,table=table_data(db,study.id);result=correspondence(table,rows,cols,2);result['fingerprint']=fingerprint(meta,rows,cols,cells,2);admin=db.scalar(select(User).where(User.role=='admin'));run=CorrespondenceRun(study_id=study.id,name='秋季导览结构初稿',axes=2,status='succeeded',result=result,creator_id=admin.id);db.add(run);db.flush();db.add(InterpretationNote(run_id=run.id,name='行轮廓结构与导览小样草案',category_ids=[p['id'] for p in result['row_points'][:2]],interpretation='先读取同行轮廓与显示质量，不把行列两点间接近当成直接偏好距离。',next_step='保留完整惯量和期望计数诊断，再做独立导览小样试验。',creator_id=admin.id));db.add(AuditLog(actor='seed',action='demo.created',detail={'total_counts':1806,'tables':3}));db.commit()
+ if not db.scalar(select(CorrespondenceRun).where(CorrespondenceRun.name=='稀疏试采固定边际随机检验')):
+  admin=db.scalar(select(User).where(User.role=='admin'))
+  sparse_study=db.scalar(select(ContingencyStudy).where(ContingencyStudy.name==scenarios[2][0]));smeta,srows,scols,scells,stable=table_data(db,sparse_study.id);sresult=correspondence(stable,srows,scols,2);sresult['fingerprint']=fingerprint(smeta,srows,scols,scells,2)
+  # 固定计数与随机设置（次数2000、种子2026、超时25秒），相同输入可逐次复算
+  sresult['randomization_test']=attach_run_context(
+   fixed_margin_test(sresult['table'],replications=2000,seed=2026,timeout_seconds=25),sresult)
+  srun=CorrespondenceRun(study_id=sparse_study.id,name='稀疏试采固定边际随机检验',axes=2,status='succeeded',result=sresult,creator_id=admin.id);db.add(srun);db.commit()
   counts={t.__tablename__:db.scalar(select(func.count()).select_from(t)) for t in [User,ContingencyStudy,Category,CellCount,CorrespondenceRun,InterpretationNote]};print(json.dumps(counts));return counts
 if __name__=='__main__':seed()
